@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: health-ai
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+        value: "<YOUR_OPENAI_API_KEY>"
