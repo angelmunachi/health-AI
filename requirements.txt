@@ -7,7 +7,7 @@ httpx
 requests
 pydantic
 pydantic-settings
-Logging & Utilities
+Logging
 loguru
 pillow
 python-jose
