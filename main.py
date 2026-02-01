@@ -5,6 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import uuid
 import shutil
+import os
+import base64
+import tempfile
 
 from engine import analyze_leg_image  # AI logic lives here
 
@@ -33,6 +36,8 @@ app.add_middleware(
 # -------------------------
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+UPLOADS_DIR = STATIC_DIR / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -51,45 +56,37 @@ async def serve_ui():
 # -------------------------
 @app.post("/api/analyze-leg")
 async def analyze_leg(file: UploadFile = File(...)):
-    """
-    Accepts an image and returns AI-generated visual observations.
-    Designed for three.js visualization on the frontend.
-    """
-
     if file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
         raise HTTPException(
             status_code=400,
             detail="Unsupported image format. Use JPEG, PNG, or WEBP."
         )
 
-    # Save image temporarily
     image_id = f"{uuid.uuid4()}.png"
-    temp_path = BASE_DIR / image_id
+    temp_path = UPLOADS_DIR / image_id
 
     try:
+        # Save uploaded image
         with temp_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # ---- AI Analysis (OpenAI Vision via engine.py) ----
+        # Close the UploadFile to avoid locked files
+        await file.close()
+
+        # ---- AI Analysis ----
         ai_result = analyze_leg_image(temp_path)
 
-        """
-        Expected ai_result structure:
-        {
-            "observations": [ ... ],
-            "general_info": "...",
-            "risk_level": "low | medium | unclear",
-            "visual_markers": [
-                { "label": "swelling", "x": 0.42, "y": 0.61 }
-            ]
-        }
-        """
+        # Convert image to base64 for immediate frontend display
+        with temp_path.open("rb") as f:
+            image_bytes = f.read()
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
         return JSONResponse(
             content={
                 "status": "success",
                 "data": {
                     "image_id": image_id,
+                    "image_base64": f"data:{file.content_type};base64,{image_b64}",
                     "analysis": ai_result,
                     "disclaimer": (
                         "This tool provides general visual observations only "
@@ -101,11 +98,7 @@ async def analyze_leg(file: UploadFile = File(...)):
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 # -------------------------
 # Health Check
