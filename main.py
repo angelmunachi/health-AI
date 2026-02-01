@@ -5,11 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import uuid
 import shutil
-import os
-import base64
-import tempfile
 
-from engine import analyze_leg_image  # AI logic lives here
+from engine import analyze_leg_image
 
 # -------------------------
 # App Configuration
@@ -21,28 +18,25 @@ app = FastAPI(
 )
 
 # -------------------------
-# CORS (for frontend + three.js)
+# CORS Middleware
 # -------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in production
+    allow_origins=["*"],  # Change in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # -------------------------
-# Static Files (PWA, icons, three.js assets)
+# Static Files
 # -------------------------
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-UPLOADS_DIR = STATIC_DIR / "uploads"
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # -------------------------
-# Root Route (serves UI)
+# Root Route
 # -------------------------
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
@@ -62,31 +56,26 @@ async def analyze_leg(file: UploadFile = File(...)):
             detail="Unsupported image format. Use JPEG, PNG, or WEBP."
         )
 
+    # Save image temporarily
     image_id = f"{uuid.uuid4()}.png"
-    temp_path = UPLOADS_DIR / image_id
+    temp_path = BASE_DIR / image_id
 
     try:
-        # Save uploaded image
         with temp_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-
-        # Close the UploadFile to avoid locked files
-        await file.close()
 
         # ---- AI Analysis ----
         ai_result = analyze_leg_image(temp_path)
 
-        # Convert image to base64 for immediate frontend display
-        with temp_path.open("rb") as f:
-            image_bytes = f.read()
-        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        # Check for AI errors
+        if "error" in ai_result:
+            raise HTTPException(status_code=500, detail=ai_result["error"])
 
         return JSONResponse(
             content={
                 "status": "success",
                 "data": {
                     "image_id": image_id,
-                    "image_base64": f"data:{file.content_type};base64,{image_b64}",
                     "analysis": ai_result,
                     "disclaimer": (
                         "This tool provides general visual observations only "
@@ -98,7 +87,11 @@ async def analyze_leg(file: UploadFile = File(...)):
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error analysing image: {str(e)}")
+
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 # -------------------------
 # Health Check
