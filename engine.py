@@ -1,13 +1,26 @@
 import os
 import base64
 from openai import OpenAI
+from dotenv import load_dotenv
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+load_dotenv()
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY is not set in environment variables")
+
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 def analyze_leg_image(image_path: str) -> dict:
-    with open(image_path, "rb") as img:
-        image_base64 = base64.b64encode(img.read()).decode("utf-8")
+    """
+    Sends an image to OpenAI Vision and returns structured observations
+    """
+
+    # Read and encode image
+    with open(image_path, "rb") as f:
+        image_base64 = base64.b64encode(f.read()).decode("utf-8")
 
     try:
         response = client.responses.create(
@@ -19,9 +32,11 @@ def analyze_leg_image(image_path: str) -> dict:
                         {
                             "type": "input_text",
                             "text": (
-                                "Analyze this leg image for visible swelling, "
-                                "discoloration, wounds, or abnormalities. "
-                                "Respond clearly in bullet points."
+                                "Analyze this leg image for visible swelling, skin changes, "
+                                "or abnormalities. Respond strictly in JSON with:\n"
+                                "{ observations: [], general_info: string, risk_level: "
+                                "'low' | 'medium' | 'unclear', visual_markers: "
+                                "[{label, x, y}] }"
                             )
                         },
                         {
@@ -31,28 +46,23 @@ def analyze_leg_image(image_path: str) -> dict:
                     ]
                 }
             ],
-            max_output_tokens=300
+            max_output_tokens=500
         )
 
-        # ✅ SAFE PARSING (THIS FIXES THE 500)
-        text_output = ""
+        # Extract text safely
+        output_text = response.output_text
 
-        if response.output and len(response.output) > 0:
-            for item in response.output:
-                if "content" in item:
-                    for block in item["content"]:
-                        if block["type"] == "output_text":
-                            text_output += block["text"] + "\n"
+        # If model fails to return JSON, fail gracefully
+        if not output_text:
+            raise RuntimeError("Empty response from OpenAI")
 
-        if not text_output.strip():
-            text_output = "No clear visual abnormalities detected."
-
-        return {
-            "observations": text_output.strip(),
+        return eval(output_text) if output_text.strip().startswith("{") else {
+            "observations": [output_text],
+            "general_info": "AI returned unstructured output.",
             "risk_level": "unclear",
             "visual_markers": []
         }
 
     except Exception as e:
-        # This will show exact OpenAI error in Render logs
-        raise RuntimeError(f"OpenAI request failed: {str(e)}")
+        # This is what triggers your 500
+        raise RuntimeError(f"OpenAI analysis failed: {str(e)}")
