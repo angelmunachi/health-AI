@@ -33,16 +33,18 @@ async def analyze_leg(file: UploadFile = File(...)):
     try:
         file_bytes = await file.read()
         result = analyze_leg_image(file_bytes)
+
         if "error" in result:
-            return JSONResponse(status_code=500, content={"error": result["error"]})
-        return JSONResponse(content=result)
-    except Exception as e:
-        logging.exception("Failed to analyze leg image")
-        return JSONResponse(status_code=500, content={"error": str(e)})
-            return JSONResponse(status_code=500, content={"error": result["error"]})
+            return JSONResponse(
+                status_code=500,
+                content={"error": result["error"]}
+            )
 
         return JSONResponse(content=result)
 
     except Exception as e:
         logging.exception("Failed to analyze leg image")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
