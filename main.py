@@ -1,29 +1,32 @@
-# main.py
 from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-
-from engine import analyze_leg_image
-
 import logging
+from engine import analyze_leg_image
+import os
 
 app = FastAPI()
 
-# Enable CORS for frontend
+# CORS (allow all origins for testing)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Simple health check
-@app.get("/")
-async def root():
-    return {"message": "LimbScan AI is live!"}
+# Serve static files from root
+app.mount("/static", StaticFiles(directory=os.path.dirname(os.path.abspath(__file__))), name="static")
 
-# Endpoint to analyze leg images
+# Root endpoint serves your index.html
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+# API endpoint
 @app.post("/api/analyze-leg")
 async def analyze_leg(file: UploadFile = File(...)):
     try:
