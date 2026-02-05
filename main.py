@@ -2,62 +2,66 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
-import io
-import logging
+from loguru import logger
 
-# Initialize logger
-logger = logging.getLogger("uvicorn.error")
+app = FastAPI(title="Health AI")
 
-# Initialize FastAPI app
-app = FastAPI(title="Health AI", description="AI leg analysis API")
-
-# Allow CORS (so frontend can call the API)
+# Enable CORS so frontend can call the API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change to your frontend URL in production
+    allow_origins=["*"],  # Change "*" to your frontend URL in production
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Health check endpoint
 @app.get("/")
 async def root():
-    return {"message": "Health AI API is running!"}
+    return {"message": "Welcome to Health AI API!"}
 
-# Image analysis endpoint
 @app.post("/api/analyze-leg")
 async def analyze_leg(file: UploadFile = File(...)):
+    """
+    Analyze an uploaded leg image and return AI prediction.
+    """
     try:
-        # Ensure the uploaded file is an image
+        # Validate file type
         if not file.content_type.startswith("image/"):
-            return JSONResponse(status_code=400, content={"error": "Invalid file type. Please upload an image."})
+            return JSONResponse(
+                status_code=400, 
+                content={"error": "Invalid file type. Please upload an image."}
+            )
 
-        # Open the image safely
+        # Open image
         image = Image.open(file.file)
-        # Optionally convert to RGB
-        image = image.convert("RGB")
+        image = image.convert("RGB")  # Ensure consistent format
 
-        # ----------------------------
-        # TODO: Replace this with your AI model prediction
-        # For now, we return a dummy prediction
-        result = {"prediction": "healthy", "confidence": 0.95}
-        # ----------------------------
+        # --- Dummy AI prediction logic ---
+        # Replace this with your actual AI model inference
+        result = {
+            "prediction": "healthy",   # Example: "healthy" or "diseased"
+            "confidence": 0.95         # Confidence score between 0 and 1
+        }
 
-        return JSONResponse(status_code=200, content=result)
+        # Wrap result in 'analysis' key to match frontend expectation
+        return JSONResponse(status_code=200, content={"analysis": result})
 
     except Exception as e:
-        # Log the full error in Render logs
         logger.exception("Error analyzing image:")
-        return JSONResponse(status_code=500, content={"error": "Server error: 500"})
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Server error: 500"}
+        )
 
-
-# Optional: Example endpoint to test file uploads without AI
+# Optional test upload endpoint
 @app.post("/api/test-upload")
 async def test_upload(file: UploadFile = File(...)):
+    """
+    Test endpoint to check file uploads.
+    """
     try:
-        contents = await file.read()
-        size = len(contents)
-        return {"filename": file.filename, "size_bytes": size}
+        filename = file.filename
+        size = len(await file.read())
+        return {"filename": filename, "size": size}
     except Exception as e:
         logger.exception("Error in test upload:")
-        return JSONResponse(status_code=500, content={"error": "Server error: 500"})
+        return JSONResponse(status_code=500, content={"error": "Upload failed"})
