@@ -9,66 +9,51 @@ import logging
 
 from engine import analyze_leg_image
 
-# -------------------------
-# Logging
-# -------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
 
-# -------------------------
-# FastAPI app
-# -------------------------
 app = FastAPI(
     title="LimbScan AI",
     description="AI-assisted visual health awareness tool",
     version="1.0.0"
 )
 
-# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in production
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Static files
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+UPLOAD_DIR = BASE_DIR / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Root route
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
-    index_file = BASE_DIR / "index.html"
-    if not index_file.exists():
-        raise HTTPException(status_code=404, detail="index.html not found")
-    return index_file.read_text(encoding="utf-8")
+    return (BASE_DIR / "index.html").read_text(encoding="utf-8")
 
-# Image analysis
+
 @app.post("/api/analyze-leg")
 async def analyze_leg(file: UploadFile = File(...)):
+
     if file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported image format. Use JPEG, PNG, or WEBP."
-        )
+        raise HTTPException(status_code=400, detail="Invalid image format")
 
     image_id = f"{uuid.uuid4()}.png"
-    temp_path = BASE_DIR / image_id
+    image_path = UPLOAD_DIR / image_id
 
     try:
-        # Save temporarily
-        with temp_path.open("wb") as buffer:
+        with image_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        logger.info(f"Saved uploaded image as {image_id}")
 
-        # Run AI analysis
-        ai_result = analyze_leg_image(temp_path)
+        ai_result = analyze_leg_image(str(image_path))
 
         if "error" in ai_result:
-            logger.error(f"AI analysis error: {ai_result['error']}")
             raise HTTPException(status_code=500, detail=ai_result["error"])
 
         return JSONResponse(
@@ -79,22 +64,32 @@ async def analyze_leg(file: UploadFile = File(...)):
                     "analysis": ai_result,
                     "disclaimer": (
                         "This tool provides general visual observations only "
-                        "and does not offer medical diagnosis."
+                        "and does not provide medical diagnosis."
                     )
                 }
             }
         )
 
-    except Exception as e:
-        logger.exception("Failed to analyze image")
-        raise HTTPException(status_code=500, detail=f"Error analyzing image: {str(e)}")
-
     finally:
-        if temp_path.exists():
-            temp_path.unlink()
-            logger.info(f"Deleted temporary image {image_id}")
+        if image_path.exists():
+            image_path.unlink()
 
-# Health check
+
 @app.get("/health")
-def health_check():
+def health():
     return {"status": "ok"}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
